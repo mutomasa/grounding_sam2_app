@@ -1,6 +1,8 @@
 # Grounding SAM 2 動画物体追跡アプリケーション
 
 🎯 Grounding SAM 2技術を使用した動画内の物体検出、セグメンテーション、および追跡のためのStreamlitベースアプリケーション
+<img width="1211" height="296" alt="image" src="https://github.com/user-attachments/assets/e2c5bc48-1e9d-417f-aa84-50ba15d91d4e" />
+
 
 ## 概要
 
