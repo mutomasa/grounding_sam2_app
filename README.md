@@ -1,234 +1,245 @@
-# Grounding SAM 2 Video Object Tracking Application
+# Grounding SAM 2 動画物体追跡アプリケーション
 
-🎯 A Streamlit-based application for object detection, segmentation, and tracking in videos using Grounding SAM 2 technology.
+🎯 Grounding SAM 2技術を使用した動画内の物体検出、セグメンテーション、および追跡のためのStreamlitベースアプリケーション
 
-## Overview
+## 概要
 
-This application combines the power of Grounding SAM 2 (Segment Anything Model 2) with natural language object detection to provide an intuitive interface for video analysis. Users can upload videos and specify objects to track using simple text descriptions.
+このアプリケーションは、Grounding SAM 2（Segment Anything Model 2）の力と自然言語による物体検出を組み合わせ、動画解析のための直感的なインターフェースを提供します。ユーザーは動画をアップロードし、シンプルなテキスト記述を使用して追跡する物体を指定できます。
 
-## Features
+## 主な機能
 
-- 📹 **Video Upload**: Support for multiple video formats (MP4, AVI, MOV, MKV)
-- 🔍 **Text-based Object Detection**: Describe objects in natural language
-- 🎯 **Precise Segmentation**: Leverage SAM 2 for accurate object boundaries
-- 📊 **Real-time Tracking**: Track objects across video frames
-- 📈 **Interactive Visualization**: Plotly-powered charts and analytics
-- 🖥️ **User-friendly Interface**: Clean Streamlit web interface
+- 📹 **動画アップロード**: 複数の動画形式をサポート（MP4、AVI、MOV、MKV）
+- 🔍 **テキストベース物体検出**: 自然言語での物体記述
+- 🎯 **精密セグメンテーション**: SAM 2による正確な物体境界の取得
+- 📊 **リアルタイム追跡**: 動画フレーム間での物体追跡
+- 📈 **インタラクティブ可視化**: Plotlyによるチャートと分析
+- 🖥️ **ユーザーフレンドリー**: 直感的なStreamlit Webインターフェース
 
-## Technical Architecture
+## 技術アーキテクチャ
 
-### Grounding SAM 2 Technology
+### Grounding SAM 2 技術
 
-**Grounding SAM 2** represents a significant advancement in vision-language understanding, combining:
+**Grounding SAM 2**は、視覚言語理解における重要な進歩を表し、以下を組み合わせています：
 
-#### Model Architecture
+#### モデルアーキテクチャ
 
 1. **GroundingDINO**: 
-   - Text-conditioned object detection model
-   - Transforms natural language queries into visual object detection
-   - Uses transformer architecture with cross-modal attention mechanisms
-   - Enables zero-shot detection of objects described in text
+   - テキスト条件付き物体検出モデル
+   - 自然言語クエリを視覚物体検出に変換
+   - クロスモーダル注意機構を持つTransformerアーキテクチャを使用
+   - テキストで記述された物体のゼロショット検出を可能にする
 
 2. **Segment Anything Model 2 (SAM 2)**:
-   - Advanced segmentation model by Meta AI
-   - Provides pixel-perfect object boundaries
-   - Supports various prompt types (points, boxes, masks)
-   - Optimized for video temporal consistency
+   - Meta AIによる高度なセグメンテーションモデル
+   - ピクセル完璧な物体境界を提供
+   - 様々なプロンプトタイプをサポート（点、ボックス、マスク）
+   - 動画の時間的一貫性に最適化
 
-3. **Video Tracking Pipeline**:
-   - Combines detection and segmentation for robust tracking
-   - Maintains object identity across frames
-   - Handles occlusions and re-identification
+3. **動画追跡パイプライン**:
+   - 検出とセグメンテーションを組み合わせた堅牢な追跡
+   - フレーム間での物体アイデンティティを維持
+   - オクルージョンと再識別を処理
 
-#### Advanced Features
+#### 先進的な機能
 
-- **Cross-modal Understanding**: Bridges natural language and computer vision
-- **Zero-shot Capabilities**: Detects objects without specific training
-- **Temporal Consistency**: Maintains tracking across video sequences
-- **High-quality Segmentation**: Pixel-level accuracy for object boundaries
-- **Real-time Processing**: Optimized for efficient video analysis
+- **クロスモーダル理解**: 自然言語とコンピュータビジョンの橋渡し
+- **ゼロショット能力**: 特定の訓練なしに物体を検出
+- **時間的一貫性**: 動画シーケンス全体での追跡維持
+- **高品質セグメンテーション**: 物体境界のピクセルレベル精度
+- **リアルタイム処理**: 効率的な動画解析に最適化
 
-### Technical Implementation
+### 技術実装
 
 ```
-Text Prompt → GroundingDINO → Object Detection → SAM 2 → Segmentation → Tracking
+テキストプロンプト → GroundingDINO → 物体検出 → SAM 2 → セグメンテーション → 追跡
 ```
 
-#### Key Components:
+#### 主要コンポーネント:
 
-1. **Text Encoder**: Processes natural language descriptions
-2. **Vision Encoder**: Extracts visual features from video frames
-3. **Cross-modal Fusion**: Aligns text and visual representations
-4. **Object Detector**: Localizes objects based on text queries
-5. **Segmentation Model**: Generates precise object masks
-6. **Tracker**: Maintains object identity across frames
+1. **テキストエンコーダー**: 自然言語記述を処理
+2. **ビジョンエンコーダー**: 動画フレームから視覚特徴を抽出
+3. **クロスモーダル融合**: テキストと視覚表現を整合
+4. **物体検出器**: テキストクエリに基づく物体の位置特定
+5. **セグメンテーションモデル**: 精密な物体マスクを生成
+6. **トラッカー**: フレーム間での物体アイデンティティを維持
 
-## Installation
+## インストール
 
-### Prerequisites
+### 必要な環境
 
-- Python 3.8+
-- CUDA-compatible GPU (recommended)
-- UV package manager
+- Python 3.8以上
+- CUDA対応GPU（推奨）
+- UVパッケージマネージャー
 
-### Setup
+### セットアップ
 
-1. Clone the repository:
+1. リポジトリをクローン:
 ```bash
 git clone <repository-url>
 cd grounding_sam2_app
 ```
 
-2. Install dependencies using UV:
+2. UVを使用して依存関係をインストール:
 ```bash
 uv init
 uv add streamlit plotly opencv-python pillow torch torchvision numpy pandas matplotlib seaborn transformers supervision ultralytics segment-anything
 ```
 
-3. Run the application:
+3. アプリケーションを実行:
 ```bash
 uv run streamlit run main.py
 ```
 
-## Usage
+## 使用方法
 
-### Basic Workflow
+### 基本ワークフロー
 
-1. **Start the Application**:
+1. **アプリケーションを起動**:
    ```bash
    uv run streamlit run main.py
    ```
 
-2. **Upload a Video**:
-   - Click "Browse files" to upload a video
-   - Supported formats: MP4, AVI, MOV, MKV
+2. **動画をアップロード**:
+   - "Browse files"をクリックして動画をアップロード
+   - 対応形式: MP4、AVI、MOV、MKV
 
-3. **Specify Object to Track**:
-   - Enter a text description in the sidebar
-   - Examples: "person", "car", "dog", "red car", "walking person"
+3. **追跡する物体を指定**:
+   - サイドバーにテキスト記述を入力
+   - 例: "person"（人）、"car"（車）、"dog"（犬）、"red car"（赤い車）、"walking person"（歩いている人）
 
-4. **Process Video**:
-   - Click "🚀 Process Video" button
-   - Wait for processing to complete
+4. **動画を処理**:
+   - "🚀 Process Video"ボタンをクリック
+   - 処理完了まで待機
 
-5. **View Results**:
-   - Interactive charts showing detection statistics
-   - Frame-by-frame tracking results
-   - Processing pipeline visualization
+5. **結果を確認**:
+   - 検出統計を示すインタラクティブチャート
+   - フレームごとの追跡結果
+   - 処理パイプラインの可視化
 
-### Advanced Features
+### 高度な機能
 
-- **Pipeline Visualization**: View the complete processing workflow
-- **Detection Analytics**: Confidence distributions and temporal analysis
-- **Sample Videos**: Pre-configured test cases for demonstration
+- **パイプライン可視化**: 完全な処理ワークフローの表示
+- **検出分析**: 信頼度分布と時間的分析
+- **サンプル動画**: デモ用の事前設定されたテストケース
 
-## Model Details
+## モデル詳細
 
 ### GroundingDINO
 
-- **Architecture**: Transformer-based detection model
-- **Training**: Large-scale vision-language datasets
-- **Capabilities**: Open-vocabulary object detection
-- **Performance**: High accuracy on diverse object categories
+- **アーキテクチャ**: Transformerベースの検出モデル
+- **学習**: 大規模視覚言語データセット
+- **能力**: オープン語彙物体検出
+- **性能**: 多様な物体カテゴリで高精度
 
 ### SAM 2
 
-- **Model Size**: Multiple variants (Base, Large, Huge)
-- **Training Data**: SA-1B dataset (1+ billion masks)
-- **Segmentation Quality**: State-of-the-art mask precision
-- **Video Support**: Temporal consistency across frames
+- **モデルサイズ**: 複数のバリアント（Base、Large、Huge）
+- **学習データ**: SA-1Bデータセット（10億以上のマスク）
+- **セグメンテーション品質**: 最先端のマスク精度
+- **動画サポート**: フレーム間の時間的一貫性
 
-## Performance Considerations
+## パフォーマンス考慮事項
 
-### Hardware Requirements
+### ハードウェア要件
 
-- **GPU**: NVIDIA GPU with 8GB+ VRAM (recommended)
-- **CPU**: Multi-core processor for video processing
-- **RAM**: 16GB+ for large video files
-- **Storage**: SSD recommended for video I/O
+- **GPU**: NVIDIA GPU（VRAM 8GB以上推奨）
+- **CPU**: 動画処理用マルチコアプロセッサー
+- **RAM**: 大きな動画ファイル用に16GB以上
+- **ストレージ**: 動画I/O用にSSD推奨
 
-### Optimization Tips
+### 最適化のヒント
 
-- Use lower resolution videos for faster processing
-- Limit video length for real-time analysis
-- Adjust detection confidence thresholds
-- Enable GPU acceleration when available
+- より高速な処理のために低解像度動画を使用
+- リアルタイム分析のために動画長を制限
+- 検出信頼度閾値を調整
+- 利用可能な場合はGPUアクセラレーションを有効化
 
-## Use Cases
+## 使用例
 
-### Professional Applications
+### プロフェッショナル用途
 
-- **Security & Surveillance**: Track specific individuals or objects
-- **Sports Analysis**: Analyze player movements and strategies
-- **Wildlife Monitoring**: Track animals in natural habitats
-- **Industrial Inspection**: Monitor equipment and processes
+- **セキュリティ・監視**: 特定の個人や物体の追跡
+- **スポーツ分析**: 選手の動きと戦略の分析
+- **野生動物監視**: 自然生息地での動物追跡
+- **産業検査**: 設備とプロセスの監視
 
-### Research Applications
+### 研究用途
 
-- **Computer Vision Research**: Evaluate tracking algorithms
-- **Behavioral Studies**: Analyze object interactions
-- **Dataset Creation**: Generate annotated video datasets
-- **Benchmark Testing**: Compare detection models
+- **コンピュータビジョン研究**: 追跡アルゴリズムの評価
+- **行動研究**: 物体間相互作用の分析
+- **データセット作成**: 注釈付き動画データセットの生成
+- **ベンチマークテスト**: 検出モデルの比較
 
-## Technical Specifications
+## 技術仕様
 
-### Supported Video Codecs
+### サポートされる動画コーデック
 
 - H.264/AVC
 - H.265/HEVC
 - VP9
-- AV1 (experimental)
+- AV1（実験的）
 
-### Processing Capabilities
+### 処理能力
 
-- **Frame Rate**: Up to 30 FPS
-- **Resolution**: Up to 4K (4096×2160)
-- **Duration**: No theoretical limit (memory dependent)
-- **Batch Processing**: Multiple videos in sequence
+- **フレームレート**: 最大30 FPS
+- **解像度**: 最大4K（4096×2160）
+- **時間**: 理論的制限なし（メモリ依存）
+- **バッチ処理**: 連続した複数の動画
 
-## API Reference
+## API リファレンス
 
-### Core Classes
+### コアクラス
 
 #### `GroundingSAM2Pipeline`
 
-Main processing pipeline for video analysis.
+動画解析のためのメイン処理パイプライン。
 
-**Methods:**
-- `load_models()`: Initialize detection and segmentation models
-- `detect_objects_in_frame(frame, text_prompt)`: Detect objects in single frame
-- `process_video(video_path, text_prompt)`: Process entire video
+**メソッド:**
+- `load_models()`: 検出とセグメンテーションモデルを初期化
+- `detect_objects_in_frame(frame, text_prompt)`: 単一フレームで物体を検出
+- `process_video(video_path, text_prompt)`: 動画全体を処理
 
-### Visualization Functions
+### 可視化関数
 
 #### `visualize_tracking_results(frames_data)`
 
-Generate interactive charts for tracking analysis.
+追跡分析用のインタラクティブチャートを生成。
 
-## Contributing
+## コントリビューション
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests for new functionality
-5. Submit a pull request
+1. リポジトリをフォーク
+2. 機能ブランチを作成
+3. 変更を加える
+4. 新機能にテストを追加
+5. プルリクエストを送信
 
-## License
+## ライセンス
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+このプロジェクトはMITライセンスの下でライセンスされています - 詳細はLICENSEファイルを参照してください。
 
-## Acknowledgments
+## 謝辞
 
-- **Meta AI**: For the Segment Anything Model 2
-- **IDEA Research**: For GroundingDINO implementation
-- **Ultralytics**: For YOLO integration
-- **Streamlit**: For the web application framework
+- **Meta AI**: Segment Anything Model 2の提供
+- **IDEA Research**: GroundingDINOの実装
+- **Ultralytics**: YOLO統合
+- **Streamlit**: Webアプリケーションフレームワーク
 
-## References
+## 参考文献
 
-- [Grounding SAM 2 Repository](https://github.com/IDEA-Research/Grounded-SAM-2)
-- [SAM 2 Paper](https://arxiv.org/abs/2401.12741)
-- [GroundingDINO Paper](https://arxiv.org/abs/2303.05499)
-- [Segment Anything Project](https://segment-anything.com/)
+- [Grounding SAM 2 リポジトリ](https://github.com/IDEA-Research/Grounded-SAM-2)
+- [SAM 2 論文](https://arxiv.org/abs/2401.12741)
+- [GroundingDINO 論文](https://arxiv.org/abs/2303.05499)
+- [Segment Anything プロジェクト](https://segment-anything.com/)
+
+## サポート
+
+問題や質問については:
+- [Issues](https://github.com/your-repo/issues) ページを確認
+- ドキュメントを確認
+- メンテナーに連絡
+
+---
+
+❤️ Streamlit と Grounding SAM 2 を使用して構築
 
 
