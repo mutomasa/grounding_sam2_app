@@ -14,6 +14,24 @@ import supervision as sv
 from ultralytics import YOLO
 import random
 
+try:
+    from segment_anything import sam_model_registry, SamPredictor
+    SAM_AVAILABLE = True
+except ImportError:
+    SAM_AVAILABLE = False
+    st.warning("⚠️ Segment Anything (SAM v1) not available. Using simplified segmentation if SAM2 also missing.")
+
+# Optional: SAM2 (Segment Anything 2)
+SAM2_IMPORT_ERROR = None
+try:
+    # SAM2 community package names vary; try common imports
+    from sam2.build_sam2 import build_sam2_model
+    from sam2.sam2_image_predictor import SAM2ImagePredictor
+    SAM2_AVAILABLE = True
+except Exception as e:
+    SAM2_AVAILABLE = False
+    SAM2_IMPORT_ERROR = str(e)
+
 # Configure page
 st.set_page_config(
     page_title="Grounding SAM 2 App",
@@ -24,27 +42,258 @@ st.set_page_config(
 class GroundingSAM2Pipeline:
     def __init__(self):
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.processor = None
-        self.model = None
+        self.grounding_dino_processor = None
+        self.grounding_dino_model = None
+        self.sam_predictor = None  # SAM v1
+        self.sam2_predictor = None  # SAM v2
+        self.yolo_model = None  # Fallback
         self.load_models()
     
     def load_models(self):
-        """Load GroundingDINO model for object detection"""
+        """Load GroundingDINO and SAM models"""
+        models_loaded = []
+        
         try:
-            # Use YOLO as a fallback for demonstration
-            self.yolo_model = YOLO('yolov8n.pt')
-            st.success("Models loaded successfully!")
+            # 1. Load Grounding DINO from HuggingFace
+            st.info("🔄 Loading Grounding DINO model...")
+            model_id = "IDEA-Research/grounding-dino-tiny"
+            self.grounding_dino_processor = AutoProcessor.from_pretrained(model_id)
+            self.grounding_dino_model = AutoModelForZeroShotObjectDetection.from_pretrained(model_id).to(self.device)
+            models_loaded.append("✅ Grounding DINO")
+            
         except Exception as e:
-            st.error(f"Error loading models: {e}")
+            st.warning(f"⚠️ Failed to load Grounding DINO: {e}")
+            models_loaded.append("❌ Grounding DINO")
+        
+        # 2. Try SAM2 first, then SAM v1
+        try:
+            if SAM2_AVAILABLE:
+                st.info("🔄 Loading SAM2 predictor (if checkpoints exist)...")
+                ckpt_dir = Path("checkpoints")
+                ckpt_dir.mkdir(exist_ok=True)
+                sam2_ckpt = None
+                sam2_cfg = None
+                # Try to locate typical SAM2 files in checkpoints directory
+                for p in ckpt_dir.glob("**/*"):
+                    name = p.name.lower()
+                    if p.is_file() and name.endswith((".pt", ".pth")) and "sam2" in name:
+                        sam2_ckpt = str(p)
+                    if p.is_file() and name.endswith((".yaml", ".yml")) and "sam2" in name:
+                        sam2_cfg = str(p)
+                if sam2_ckpt and sam2_cfg:
+                    sam2_model = build_sam2_model(sam2_cfg, sam2_ckpt, device=self.device)
+                    self.sam2_predictor = SAM2ImagePredictor(sam2_model)
+                    models_loaded.append("✅ SAM2")
+                else:
+                    models_loaded.append("❌ SAM2 (checkpoint/config not found)")
+            else:
+                models_loaded.append("❌ SAM2 (not installed)")
+        except Exception as e:
+            st.warning(f"⚠️ Failed to load SAM2: {e}")
+            models_loaded.append("❌ SAM2")
+
+        try:
+            # Fallback to SAM v1 if SAM2 not loaded
+            if self.sam2_predictor is None and SAM_AVAILABLE:
+                st.info("🔄 Loading SAM v1 predictor...")
+                sam_checkpoint_path = self.download_sam_checkpoint()
+                if sam_checkpoint_path:
+                    sam = sam_model_registry["vit_h"](checkpoint=sam_checkpoint_path)
+                    sam.to(device=self.device)
+                    self.sam_predictor = SamPredictor(sam)
+                    models_loaded.append("✅ SAM v1")
+                else:
+                    models_loaded.append("❌ SAM v1 (checkpoint not found)")
+            elif self.sam2_predictor is None and not SAM_AVAILABLE:
+                models_loaded.append("❌ SAM v1 (not installed)")
+        except Exception as e:
+            st.warning(f"⚠️ Failed to load SAM v1: {e}")
+            models_loaded.append("❌ SAM v1")
+        
+        try:
+            # 3. Load YOLO as fallback
+            st.info("🔄 Loading YOLO fallback...")
+            self.yolo_model = YOLO('yolov8n.pt')
+            models_loaded.append("✅ YOLO (fallback)")
+            
+        except Exception as e:
+            st.error(f"❌ Failed to load YOLO fallback: {e}")
+            models_loaded.append("❌ YOLO (fallback)")
+        
+        # Display loaded models
+        st.success("Models loaded:")
+        for model_status in models_loaded:
+            st.write(f"  {model_status}")
+            
+        # Determine primary detection method
+        if self.grounding_dino_model is not None:
+            st.info("🎯 Primary detection: Grounding DINO")
+            self.detection_method = "grounding_dino"
+        elif self.yolo_model is not None:
+            st.info("🎯 Primary detection: YOLO (fallback)")
+            self.detection_method = "yolo"
+        else:
+            st.error("❌ No object detection model available!")
+            self.detection_method = None
+    
+    def download_sam_checkpoint(self):
+        """Download SAM checkpoint if not available"""
+        checkpoint_dir = Path("checkpoints")
+        checkpoint_dir.mkdir(exist_ok=True)
+        
+        checkpoint_path = checkpoint_dir / "sam_vit_h_4b8939.pth"
+        
+        if checkpoint_path.exists():
+            return str(checkpoint_path)
+        
+        try:
+            import urllib.request
+            url = "https://dl.fbaipublicfiles.com/segment_anything/sam_vit_h_4b8939.pth"
+            st.info(f"📥 Downloading SAM checkpoint ({url})...")
+            
+            # Show progress bar
+            progress_bar = st.progress(0)
+            
+            def progress_hook(block_num, block_size, total_size):
+                downloaded = block_num * block_size
+                percent = min(downloaded / total_size, 1.0)
+                progress_bar.progress(percent)
+            
+            urllib.request.urlretrieve(url, checkpoint_path, progress_hook)
+            progress_bar.empty()
+            
+            st.success("✅ SAM checkpoint downloaded successfully!")
+            return str(checkpoint_path)
+            
+        except Exception as e:
+            st.warning(f"⚠️ Failed to download SAM checkpoint: {e}")
+            return None
     
     def detect_objects_in_frame(self, frame, text_prompt):
         """Detect objects in a single frame based on text prompt"""
+        if self.detection_method == "grounding_dino":
+            return self._detect_with_grounding_dino(frame, text_prompt)
+        elif self.detection_method == "yolo":
+            return self._detect_with_yolo(frame, text_prompt)
+        else:
+            st.error("❌ No detection method available")
+            return [], []
+    
+    def _post_process_gdino(self, outputs, input_ids, image_size, box_threshold, text_threshold):
+        """Robust post-process for GroundingDINO across transformers versions."""
+        target_sizes = [image_size[::-1]]  # (H, W)
         try:
-            # Use YOLO for object detection (simplified version)
+            return self.grounding_dino_processor.post_process_grounded_object_detection(
+                outputs, input_ids, box_threshold, text_threshold, target_sizes
+            )[0]
+        except TypeError:
+            try:
+                return self.grounding_dino_processor.post_process_grounded_object_detection(
+                    outputs, input_ids, box_threshold, text_threshold
+                )[0]
+            except TypeError:
+                try:
+                    return self.grounding_dino_processor.post_process_grounded_object_detection(
+                        outputs, input_ids, target_sizes=target_sizes
+                    )[0]
+                except Exception:
+                    # Generic fallback
+                    return self.grounding_dino_processor.post_process_object_detection(
+                        outputs, target_sizes= torch.tensor(target_sizes), threshold=box_threshold
+                    )[0]
+
+    def _detect_with_grounding_dino(self, frame, text_prompt):
+        """Detect objects using Grounding DINO"""
+        try:
+            # Convert frame to PIL Image
+            if isinstance(frame, np.ndarray):
+                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                image = Image.fromarray(frame_rgb)
+            else:
+                image = frame
+            
+            # Prepare text prompt (must end with period for Grounding DINO)
+            if not text_prompt.endswith('.'):
+                text_prompt = text_prompt + '.'
+            
+            # Process inputs
+            inputs = self.grounding_dino_processor(
+                images=image, 
+                text=text_prompt, 
+                return_tensors="pt"
+            ).to(self.device)
+            
+            # Get detections
+            with torch.no_grad():
+                outputs = self.grounding_dino_model(**inputs)
+            
+            # Get dynamic thresholds from session state
+            box_threshold = getattr(st.session_state, 'box_threshold', 0.25)
+            text_threshold = getattr(st.session_state, 'text_threshold', 0.25)
+            
+            # Post-process results (robust across versions)
+            results = self._post_process_gdino(
+                outputs, inputs.input_ids, image.size, box_threshold, text_threshold
+            )
+            
+            detections = []
+            all_detections = []
+            
+            if len(results["boxes"]) > 0:
+                boxes = results["boxes"].cpu().numpy()
+                scores = results["scores"].cpu().numpy()
+                labels = results["labels"]
+                
+                for i, (box, score, label) in enumerate(zip(boxes, scores, labels)):
+                    x1, y1, x2, y2 = box
+                    
+                    detection_data = {
+                        'class': label,
+                        'confidence': float(score),
+                        'bbox': [float(x1), float(y1), float(x2), float(y2)]
+                    }
+                    
+                    all_detections.append(detection_data)
+                    
+                    # Get settings from session state
+                    show_all = getattr(st.session_state, 'show_all_detections', False)
+                    conf_threshold = getattr(st.session_state, 'confidence_threshold', 0.25)
+                    
+                    if show_all or score > conf_threshold:
+                        detections.append({
+                            'bbox': [float(x1), float(y1), float(x2), float(y2)],
+                            'confidence': float(score),
+                            'class': label
+                        })
+            
+            # Debug information
+            if len(all_detections) > 0:
+                debug_msg = f"Grounding DINO: Found {len(all_detections)} objects for '{text_prompt}': "
+                debug_msg += ", ".join([f"{d['class']}({d['confidence']:.2f})" for d in all_detections[:5]])
+                if len(all_detections) > 5:
+                    debug_msg += f" and {len(all_detections)-5} more..."
+                debug_msg += f" | Selected {len(detections)}"
+                
+                if hasattr(st.session_state, 'debug_mode') and st.session_state.get('debug_mode', False):
+                    st.sidebar.text(debug_msg)
+            
+            return detections, all_detections
+            
+        except Exception as e:
+            st.error(f"Error in Grounding DINO detection: {e}")
+            # Fallback to YOLO if available
+            if self.yolo_model is not None:
+                st.warning("🔄 Falling back to YOLO detection...")
+                return self._detect_with_yolo(frame, text_prompt)
+            return [], []
+    
+    def _detect_with_yolo(self, frame, text_prompt):
+        """Detect objects using YOLO (fallback method)"""
+        try:
             results = self.yolo_model(frame)
             
             detections = []
-            all_detections = []  # For debugging
+            all_detections = []
             
             for r in results:
                 boxes = r.boxes
@@ -56,60 +305,118 @@ class GroundingSAM2Pipeline:
                         
                         class_name = self.yolo_model.names[cls]
                         
-                        # Store all detections for debugging
                         all_detections.append({
                             'class': class_name,
-                            'confidence': conf,
-                            'bbox': [x1, y1, x2, y2]
+                            'confidence': float(conf),
+                            'bbox': [float(x1), float(y1), float(x2), float(y2)]
                         })
                         
                         # Get settings from session state
                         show_all = getattr(st.session_state, 'show_all_detections', False)
                         conf_threshold = getattr(st.session_state, 'confidence_threshold', 0.3)
                         
-                        # Include detection if:
                         should_include = False
-                        
                         if show_all and conf > conf_threshold:
-                            # Debug mode: show all detections above threshold
                             should_include = True
                         elif (text_prompt.lower() in class_name.lower() or 
                               class_name.lower() in text_prompt.lower()):
-                            # Normal mode: text matching
                             should_include = True
-                        elif conf > 0.7:  # Very high confidence
+                        elif conf > 0.7:
                             should_include = True
                         
                         if should_include:
                             detections.append({
-                                'bbox': [x1, y1, x2, y2],
-                                'confidence': conf,
+                                'bbox': [float(x1), float(y1), float(x2), float(y2)],
+                                'confidence': float(conf),
                                 'class': class_name
                             })
             
             # Debug information
             if len(all_detections) > 0:
-                debug_msg = f"Frame analysis: Found {len(all_detections)} total objects: "
+                debug_msg = f"YOLO: Found {len(all_detections)} total objects: "
                 debug_msg += ", ".join([f"{d['class']}({d['confidence']:.2f})" for d in all_detections[:5]])
                 if len(all_detections) > 5:
                     debug_msg += f" and {len(all_detections)-5} more..."
                 debug_msg += f" | Matched {len(detections)} for prompt '{text_prompt}'"
                 
-                # Show debug info in sidebar if available
                 if hasattr(st.session_state, 'debug_mode') and st.session_state.get('debug_mode', False):
                     st.sidebar.text(debug_msg)
             
-            # Return both matched detections and all detections for debugging
             return detections, all_detections
             
         except Exception as e:
-            st.error(f"Error in object detection: {e}")
+            st.error(f"Error in YOLO detection: {e}")
             return [], []
     
     def generate_segmentation_mask(self, frame, bbox):
-        """Generate a simple segmentation mask for demonstration"""
-        # Create a mask based on the bounding box
-        # In a real implementation, this would use SAM 2
+        """Generate segmentation mask using SAM or fallback method"""
+        if self.sam2_predictor is not None:
+            return self._generate_sam2_mask(frame, bbox)
+        if self.sam_predictor is not None:
+            return self._generate_sam_mask(frame, bbox)
+        else:
+            return self._generate_simple_mask(frame, bbox)
+    
+    def _generate_sam_mask(self, frame, bbox):
+        """Generate segmentation mask using SAM"""
+        try:
+            # Convert frame to RGB if needed
+            if len(frame.shape) == 3 and frame.shape[2] == 3:
+                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            else:
+                frame_rgb = frame
+            
+            # Set image for SAM
+            self.sam_predictor.set_image(frame_rgb)
+            
+            # Convert bbox to numpy array
+            x1, y1, x2, y2 = map(int, bbox)
+            input_box = np.array([x1, y1, x2, y2])
+            
+            # Generate mask using SAM
+            masks, scores, logits = self.sam_predictor.predict(
+                point_coords=None,
+                point_labels=None,
+                box=input_box[None, :],
+                multimask_output=False,
+            )
+            
+            # Return the best mask (first one when multimask_output=False)
+            mask = masks[0].astype(np.uint8) * 255
+            return mask
+            
+        except Exception as e:
+            st.warning(f"⚠️ SAM segmentation failed: {e}")
+            return self._generate_simple_mask(frame, bbox)
+
+    def _generate_sam2_mask(self, frame, bbox):
+        """Generate segmentation mask using SAM2 predictor."""
+        try:
+            # Convert BGR to RGB if needed
+            if len(frame.shape) == 3 and frame.shape[2] == 3:
+                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            else:
+                frame_rgb = frame
+            self.sam2_predictor.set_image(frame_rgb)
+            x1, y1, x2, y2 = map(int, bbox)
+            input_box = np.array([x1, y1, x2, y2])[None, :]
+            # SAM2 API: some versions use predict with box parameter name variations
+            try:
+                masks, _, _ = self.sam2_predictor.predict(box=input_box)
+            except TypeError:
+                masks, _, _ = self.sam2_predictor.predict(bboxes=input_box)
+            # Assume first mask best
+            mask = masks[0].astype(np.uint8) * 255
+            return mask
+        except Exception as e:
+            st.warning(f"⚠️ SAM2 segmentation failed: {e}")
+            # Fallback to SAM v1 or simple
+            if self.sam_predictor is not None:
+                return self._generate_sam_mask(frame, bbox)
+            return self._generate_simple_mask(frame, bbox)
+    
+    def _generate_simple_mask(self, frame, bbox):
+        """Generate a simple elliptical mask as fallback"""
         mask = np.zeros(frame.shape[:2], dtype=np.uint8)
         x1, y1, x2, y2 = map(int, bbox)
         
@@ -654,6 +961,9 @@ def main():
     
     # Sidebar
     st.sidebar.header("Configuration")
+    if st.sidebar.button("🔄 Reload models"):
+        with st.spinner("Reloading models..."):
+            st.session_state.pipeline = GroundingSAM2Pipeline()
     
     # Text input for object description
     text_prompt = st.sidebar.text_input(
@@ -678,9 +988,45 @@ def main():
         'mask_opacity': mask_opacity
     }
     
+    # Model status
+    st.sidebar.header("🤖 Model Status")
+    pipeline = st.session_state.pipeline
+    
+    if hasattr(pipeline, 'detection_method'):
+        if pipeline.detection_method == "grounding_dino":
+            st.sidebar.success("🎯 Active: Grounding DINO")
+            if pipeline.sam_predictor is not None:
+                st.sidebar.success("✨ Active: SAM Segmentation")
+            else:
+                st.sidebar.warning("⚠️ SAM: Using simple masks")
+        elif pipeline.detection_method == "yolo":
+            st.sidebar.warning("🔄 Fallback: YOLO Detection")
+            st.sidebar.info("💡 Consider installing Grounding DINO for better text-based detection")
+        else:
+            st.sidebar.error("❌ No detection method available")
+
+    # SAM2/SAM v1 availability details
+    with st.sidebar.expander("Model details"):
+        st.write(f"SAM2 available: {SAM2_AVAILABLE}")
+        if not SAM2_AVAILABLE and SAM2_IMPORT_ERROR:
+            st.caption(f"SAM2 import error: {SAM2_IMPORT_ERROR}")
+        st.write(f"SAM v1 available: {SAM_AVAILABLE}")
+        st.write(f"SAM2 predictor loaded: {pipeline.sam2_predictor is not None}")
+        st.write(f"SAM v1 predictor loaded: {pipeline.sam_predictor is not None}")
+    
+    # Detection settings
+    st.sidebar.header("🎯 Detection Settings")
+    
+    # For Grounding DINO
+    if hasattr(pipeline, 'detection_method') and pipeline.detection_method == "grounding_dino":
+        box_threshold = st.sidebar.slider("Box threshold", 0.1, 0.9, 0.25, 0.05)
+        text_threshold = st.sidebar.slider("Text threshold", 0.1, 0.9, 0.25, 0.05)
+        st.session_state.box_threshold = box_threshold
+        st.session_state.text_threshold = text_threshold
+    
     # Debug controls
     st.sidebar.header("🔧 Debug Options")
-    debug_mode = st.sidebar.checkbox("Enable debug mode", value=True)  # Default to True for debugging
+    debug_mode = st.sidebar.checkbox("Enable debug mode", value=True)
     st.session_state.debug_mode = debug_mode
     
     if debug_mode:
@@ -699,7 +1045,7 @@ def main():
         
         if hasattr(st.session_state, 'tracking_results') and st.session_state.tracking_results:
             total_detections = sum(r['detections_count'] for r in st.session_state.tracking_results)
-            st.write(f"Total detections across all frames: {total_detections}")
+            st.write(f"total detections across all frames: {total_detections}")
             
             # Show first few detections for debugging
             first_detection_frame = next((r for r in st.session_state.tracking_results if r['detections_count'] > 0), None)
