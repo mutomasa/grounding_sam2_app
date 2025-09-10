@@ -12,3 +12,7 @@ https://github.com/IDEA-Research/Grounded-SAM-2
 # Technical Documents
 1. README.mdにGrounding SAM 2の技術的詳細を記載してください
 2. 技術的な記載は、モデルのアーキテクチャ、先進的なところなどです
+
+
+#ToDo
+- リアルタイム処理を使う

@@ -8,3 +8,11 @@ wheels/
 
 # Virtual environments
 .venv
+
+# Model checkpoints and temporary files
+checkpoints/
+temp_videos/
+output_videos/
+
+# Streamlit cache
+.streamlit/

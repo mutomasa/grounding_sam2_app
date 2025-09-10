@@ -24,8 +24,8 @@ except ImportError:
 # Optional: SAM2 (Segment Anything 2)
 SAM2_IMPORT_ERROR = None
 try:
-    # SAM2 community package names vary; try common imports
-    from sam2.build_sam2 import build_sam2_model
+    # SAM2 official package imports
+    from sam2.build_sam import build_sam2
     from sam2.sam2_image_predictor import SAM2ImagePredictor
     SAM2_AVAILABLE = True
 except Exception as e:
@@ -71,21 +71,22 @@ class GroundingSAM2Pipeline:
                 st.info("🔄 Loading SAM2 predictor (if checkpoints exist)...")
                 ckpt_dir = Path("checkpoints")
                 ckpt_dir.mkdir(exist_ok=True)
+                # Try to locate typical SAM2 checkpoint files in checkpoints directory
                 sam2_ckpt = None
-                sam2_cfg = None
-                # Try to locate typical SAM2 files in checkpoints directory
                 for p in ckpt_dir.glob("**/*"):
                     name = p.name.lower()
                     if p.is_file() and name.endswith((".pt", ".pth")) and "sam2" in name:
                         sam2_ckpt = str(p)
-                    if p.is_file() and name.endswith((".yaml", ".yml")) and "sam2" in name:
-                        sam2_cfg = str(p)
-                if sam2_ckpt and sam2_cfg:
-                    sam2_model = build_sam2_model(sam2_cfg, sam2_ckpt, device=self.device)
+                        break
+                
+                if sam2_ckpt:
+                    # Use built-in config name instead of local config file
+                    config_name = "sam2_hiera_b+.yaml"  # Use the built-in config
+                    sam2_model = build_sam2(config_name, sam2_ckpt, device=self.device)
                     self.sam2_predictor = SAM2ImagePredictor(sam2_model)
                     models_loaded.append("✅ SAM2")
                 else:
-                    models_loaded.append("❌ SAM2 (checkpoint/config not found)")
+                    models_loaded.append("❌ SAM2 (checkpoint not found)")
             else:
                 models_loaded.append("❌ SAM2 (not installed)")
         except Exception as e:
@@ -530,16 +531,36 @@ class GroundingSAM2Pipeline:
         try:
             # Use absolute path to avoid OpenCV path issues
             abs_video_path = os.path.abspath(video_path)
-            cap = cv2.VideoCapture(abs_video_path)
             
-            if not cap.isOpened():
-                # Try with different backend
-                cap.release()
-                cap = cv2.VideoCapture(abs_video_path, cv2.CAP_FFMPEG)
-                
-                if not cap.isOpened():
-                    st.error(f"Could not open video file with any backend: {video_path}")
-                    return []
+            # Try different backends in order
+            backends = [cv2.CAP_ANY, cv2.CAP_FFMPEG, cv2.CAP_GSTREAMER]
+            
+            for backend in backends:
+                try:
+                    cap = cv2.VideoCapture(abs_video_path, backend)
+                    if cap.isOpened():
+                        # Test if we can read at least one frame
+                        ret, test_frame = cap.read()
+                        if ret and test_frame is not None:
+                            # Reset to beginning
+                            cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                            break
+                        else:
+                            cap.release()
+                            cap = None
+                    else:
+                        if cap:
+                            cap.release()
+                        cap = None
+                except Exception as e:
+                    if cap:
+                        cap.release()
+                    cap = None
+                    continue
+            
+            if cap is None or not cap.isOpened():
+                st.error(f"Could not open video file with any backend: {video_path}")
+                return []
             
             # Get video properties for verification
             fps = cap.get(cv2.CAP_PROP_FPS)
@@ -577,14 +598,28 @@ class GroundingSAM2Pipeline:
             
             while frame_idx < max_frames and consecutive_failures < max_consecutive_failures:
                 try:
-                    ret, frame = cap.read()
+                    # Attempt to read frame with additional error handling
+                    try:
+                        ret, frame = cap.read()
+                    except Exception as read_error:
+                        st.warning(f"Frame read error at {frame_idx}: {str(read_error)}")
+                        consecutive_failures += 1
+                        frame_idx += 1
+                        continue
+                    
                     if not ret:
                         st.info(f"End of video reached at frame {frame_idx}")
                         break
                     
-                    # Validate frame
-                    if frame is None or frame.size == 0:
-                        st.warning(f"Invalid frame at index {frame_idx}")
+                    # Validate frame with more thorough checks
+                    if frame is None:
+                        st.warning(f"Null frame at index {frame_idx}")
+                        consecutive_failures += 1
+                        frame_idx += 1
+                        continue
+                    
+                    if frame.size == 0 or len(frame.shape) != 3:
+                        st.warning(f"Invalid frame dimensions at index {frame_idx}: {frame.shape if frame is not None else 'None'}")
                         consecutive_failures += 1
                         frame_idx += 1
                         continue

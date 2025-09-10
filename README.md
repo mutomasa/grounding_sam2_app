@@ -87,7 +87,14 @@ uv init
 uv add streamlit plotly opencv-python pillow torch torchvision numpy pandas matplotlib seaborn transformers supervision ultralytics segment-anything
 ```
 
-3. アプリケーションを実行:
+3. SAM2モデルファイルをセットアップ:
+```bash
+# checkpoints/ディレクトリにSAM2のモデルファイルをダウンロード
+cd checkpoints
+wget -O sam2_hiera_b+.pth https://dl.fbaipublicfiles.com/segment_anything_2/072824/sam2_hiera_base_plus.pt
+```
+
+4. アプリケーションを実行:
 ```bash
 uv run streamlit run main.py
 ```
@@ -139,6 +146,24 @@ uv run streamlit run main.py
 - **学習データ**: SA-1Bデータセット（10億以上のマスク）
 - **セグメンテーション品質**: 最先端のマスク精度
 - **動画サポート**: フレーム間の時間的一貫性
+
+### モデルセットアップ詳細
+
+このアプリケーションは複数のモデルを自動的にフォールバック機能付きで読み込みます：
+
+1. **優先順位**: SAM2 → SAM v1 → YOLO (簡易セグメンテーション)
+2. **SAM2の自動検出**: `checkpoints/`ディレクトリでファイル名に`sam2`を含む`.pth/.pt`と`.yaml/.yml`ファイルを自動検出
+3. **必要ファイル**:
+   - チェックポイント: `sam2_hiera_b+.pth` (309MB)
+   - 設定ファイル: `sam2_hiera_b+.yaml` (自動生成済み)
+4. **フォールバック**: SAM2が利用できない場合、SAM v1が自動ダウンロードされて使用されます
+
+### モデルステータス確認
+
+アプリ起動時にサイドバーでモデル読み込み状況を確認できます：
+- ✅ SAM2: SAM2が正常に読み込まれた場合
+- ✅ SAM v1: SAM v1フォールバックが使用される場合
+- ✅ YOLO (fallback): 最終フォールバックのYOLO使用時
 
 ## パフォーマンス考慮事項
 
